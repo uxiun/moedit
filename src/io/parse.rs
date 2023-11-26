@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-	io::file::default_replacetomap,
+	io::file::{default_replaceallmap, default_replacetomap},
 	reveal,
 	util::func::{partition_toggle_tuple, split_partition},
 };
@@ -41,6 +41,7 @@ pub fn active_inactive_blocks<'a, 's, 'j>(
 	b: BufReader<File>,
 	ascii_quote_len: usize,
 	replacetomap: &'j ReplaceToMap<'s>,
+	replaceallmap: &'j ReplaceToMap<'s>,
 ) -> (Vec<String>, Vec<String>) {
 	let (actives, inactives): (Vec<_>, Vec<_>) = blocks(b).into_iter().partition(|ls| {
 		ls.last()
@@ -59,6 +60,7 @@ pub fn active_inactive_blocks<'a, 's, 'j>(
 						.as_str(),
 					ascii_quote_len,
 					replacetomap,
+					replaceallmap,
 				);
 
 				// .into_iter()
@@ -84,10 +86,14 @@ fn magic_format_cozo_script<'a, 's, 'j>(
 	lines: &'a str,
 	ascii_quote_len: usize,
 	replacetomap: &'j ReplaceToMap<'s>,
+	replaceallmap: &'j ReplaceToMap<'s>,
 ) -> String {
 	let mut quote_split = lines.split("\"").map(|s| s.split("'"));
 
 	// let strings =
+
+	let mut is_system_ops = false;
+
 	quote_split
 		.enumerate()
 		.map(|(i, s)| {
@@ -95,20 +101,34 @@ fn magic_format_cozo_script<'a, 's, 'j>(
 				s.enumerate()
 					.map(|(j, s)| {
 						if j % 2 == 0 {
-							auto_quote(s, ascii_quote_len, replacetomap)
+							let replaced = replace_map_all(s, replaceallmap);
+
+							if is_system_ops {
+								replaced
+							} else {
+								let (is_system, s) = auto_quote(&replaced, ascii_quote_len, replacetomap);
+
+								if j == 0 {
+									is_system_ops = is_system;
+								}
+								s
+							}
 						} else {
 							format!("'{}'", s.to_string())
 						}
 					})
 					.collect::<String>()
 			} else {
-				let s: String = s.enumerate().map(| (j, v)| {
+				let s: String = s
+					.enumerate()
+					.map(|(j, s)| {
 						if j % 2 == 0 {
-							v.to_string()
+							s.to_string()
 						} else {
-							format!("'{v}'")
+							format!("'{s}'")
 						}
-				}).collect() ;
+					})
+					.collect();
 				format!("\"{s}\"")
 			}
 		})
@@ -139,6 +159,14 @@ where
 	})
 }
 
+fn replace_map_all<'a, 'j, 's>(s: &'a str, replacetomap: &'j ReplaceToMap<'s>) -> String {
+	replacetomap
+		.into_iter()
+		.fold(s.to_string(), |s, (to, set)| {
+			set.into_iter().fold(s, |s, from| s.replace(from, to))
+		})
+}
+
 fn find_strip_prefixtest() {
 	let replacetomap = &default_replacetomap();
 	let ascstr = "<- [
@@ -153,13 +181,16 @@ pub fn auto_quote<'a, 's, 'j>(
 	s: &'a str,
 	ascii_quote_len: usize,
 	replacetomap: &'j ReplaceToMap<'s>,
-) -> String {
+) -> (bool, String) {
 	// let strs =
 	println!("auto_quote({})", s);
 
 	let pt = partition_toggle_tuple(s.chars(), &mut |c| c.is_ascii());
 
-	pt.into_iter()
+	let mut is_system_ops = false;
+
+	let (bools, ss): (Vec<_>, Vec<_>) = pt
+		.into_iter()
 		.map(|(non, ascii)| {
 			// reveal!(non);
 			// reveal!(ascii);
@@ -168,188 +199,229 @@ pub fn auto_quote<'a, 's, 'j>(
 			// 	.map(|s| s.split('[').collect() )
 			// 	.collect();
 
-			let raw: String = [non.iter(), ascii.iter()]
-				.into_iter()
-				.flatten()
-				.fold(String::new(), |s, c| format!("{s}{c}"));
-			let nons = non.iter().collect::<Vec<_>>();
+			let raw: String = [non.iter(), ascii.iter()].into_iter().flatten().collect();
 
-			let mut asc = ascii.iter();
-
-			let leftwhites_asc = asc
-				.take_while(|c| c.is_whitespace() && ("\n".chars().all(|k| k != **c)))
-				.collect::<Vec<_>>();
-
-			let s = if leftwhites_asc.len() == 0 {
-				let mut wordsuffix_asc = ascii
-					.iter()
-					.take_while(|c| c.is_ascii_alphanumeric() || ("_".contains(|x| x == **c)))
-					.collect::<Vec<_>>();
-
-				// reveal!(wordsuffix_asc);
-
-				let (consumed, suffixright) = ascii.split_at(wordsuffix_asc.len());
-
-				let mut afterword_whites = suffixright
-					.into_iter()
-					.take_while(|c| c.is_ascii_whitespace() && (**c != '\n'))
-					.collect::<Vec<_>>();
-
-				let (_, ascs) = ascii.split_at(wordsuffix_asc.len() + afterword_whites.len());
-
-				if let Some(ascc) = ascs.into_iter().next() {
-					let ascstr = ascs.into_iter().collect::<String>();
-
-					// println!("ascstr=");
-					// println!("{ascstr}");
-
-					if let Some((mark, stripped)) = find_strip_prefix(["{", "[", "<-"], &ascstr, replacetomap)
-					{
-						let mut ascsiter = ascs.into_iter();
-						ascsiter.next();
-						let s: String = vec![nons, wordsuffix_asc, afterword_whites]
-							.into_iter()
-							.flatten()
-							.collect();
-
-						// println!("{s}++{mark}++");
-
-						s + mark + auto_quote(stripped, ascii_quote_len, replacetomap).as_str()
-					} else if let Some((mark, stripped)) = find_strip_prefix([":"], &ascstr, replacetomap) {
-						let comma_i = stripped
-							.chars()
-							.enumerate()
-							.find(|(_, c)| ",\n".chars().any(|e| e == *c))
-							.map(|(i, c)| i + 1) // charsを基準にfindしたので+1
-							.unwrap_or(stripped.len());
-
-						let (raw, rem) = stripped.split_at(comma_i);
-
-						// println!("++{mark}++{raw}++");
-
-						[nons, wordsuffix_asc, afterword_whites]
-							.into_iter()
-							.flatten()
-							.collect::<String>()
-							+ mark + raw + auto_quote(&rem[1..], ascii_quote_len, replacetomap).as_str()
-					} else {
-						let (nonasc, mut ascrem): (String, String) = if nons.len() > 0 {
-							let nonasc_word: String = format!(
-								"\"{}\"",
-								[nons, wordsuffix_asc]
-									.into_iter()
-									.flatten()
-									.collect::<String>() // .fold(String::new(), |s, c| format!("{s}{c}"))
-							);
-
-							afterword_whites.extend(ascs.iter());
-							(nonasc_word, afterword_whites.into_iter().collect())
-						} else {
-							(String::new(), ascii.into_iter().collect())
-						};
-
-						// reveal!(nonasc);
-						// reveal!(ascrem);
-
-						// let ascrems = *reveal!(
-						// 	auto_quote_ascii(&ascrem, ascii_quote_len).as_str()
-						// );
-
-						nonasc + ascrem.as_str()
-					}
-				} else {
-					if nons.len() > 0 {
-						let nonasc_word: String = format!(
-							"\"{}\"",
-							[nons, wordsuffix_asc]
-								.into_iter()
-								.flatten()
-								.collect::<String>() // .fold(String::new(), |s, c| format!("{s}{c}"))
-						);
-						nonasc_word
-					} else {
-						if wordsuffix_asc
-							.iter()
-							.next()
-							.map(|c| c.is_ascii_alphabetic())
-							.unwrap_or(false)
-							&& wordsuffix_asc.len() >= ascii_quote_len
-						{
-							format!(
-								"\"{}\"",
-								wordsuffix_asc.into_iter().collect::<String>() // .fold(String::new(), |s, c| format!("{s}{c}"))
-							)
-						} else {
-							raw
-						}
-					}
-				}
+			if is_system_ops {
+				(true, raw)
 			} else {
-				let (_, ascs) = ascii.split_at(leftwhites_asc.len());
-				let nonsstr = nons.iter().map(|c| *c).collect::<String>();
-				let leftwhites_string: String = leftwhites_asc.into_iter().collect();
+				let nons = non.iter().collect::<Vec<_>>();
 
-				if let Some(ascc) = ascs.into_iter().next() {
-					let ascstr = ascs.into_iter().collect::<String>();
+				let mut asc = ascii.iter();
 
-					// println!("ascstr=");
-					// println!("{ascstr}");
+				let leftwhites_asc = asc
+					.take_while(|c| c.is_whitespace() && ("\n".chars().all(|k| k != **c)))
+					.collect::<Vec<_>>();
 
-					if let Some((mark, stripped)) = find_strip_prefix(["{", "[", "<-"], &ascstr, replacetomap)
-					{
-						let mut ascsiter = ascs.into_iter();
-						ascsiter.next();
-						let s: String = nons.into_iter().collect();
+				let s = if leftwhites_asc.len() == 0 {
+					let mut wordsuffix_asc = ascii
+						.iter()
+						.take_while(|c| c.is_ascii_alphanumeric() || ("_".contains(|x| x == **c)))
+						.collect::<Vec<_>>();
 
-						// println!("{s}++{mark}++");
+					// reveal!(wordsuffix_asc);
 
-						s + leftwhites_string.as_str()
-							+ mark + auto_quote(stripped, ascii_quote_len, replacetomap).as_str()
-					} else if let Some((mark, stripped)) = find_strip_prefix([":"], &ascstr, replacetomap) {
-						let comma_i = stripped
-							.chars()
-							.enumerate()
-							.find(|(_, c)| ",\n".chars().any(|e| e == *c))
-							.map(|(i, c)| i + 1)
-							.unwrap_or(stripped.len());
+					let (consumed, suffixright) = ascii.split_at(wordsuffix_asc.len());
 
-						let (raw, rem) = stripped.split_at(comma_i);
+					let mut afterword_whites = suffixright
+						.into_iter()
+						.take_while(|c| c.is_ascii_whitespace() && (**c != '\n'))
+						.collect::<Vec<_>>();
 
-						// println!("++{mark}++{raw}++");
+					let (_, ascs) = ascii.split_at(wordsuffix_asc.len() + afterword_whites.len());
 
-						nonsstr
-							+ leftwhites_string.as_str()
-							+ mark + raw + auto_quote(rem, ascii_quote_len, replacetomap).as_str()
-					} else {
-						let nonasc = if nons.len() > 0 {
-							let nonasc_word: String = format!("\"{}\"", nonsstr);
+					if let Some(ascc) = ascs.into_iter().next() {
+						let ascstr = ascs.into_iter().collect::<String>();
 
-							nonasc_word
+						// println!("ascstr=");
+						// println!("{ascstr}");
+
+						if "::".is_prefix_of(ascstr.as_str().trim_start()) {
+							(true, raw)
 						} else {
-							String::new()
-						};
+							(
+								false,
+								if let Some((mark, stripped)) =
+									find_strip_prefix(["{", "[", "<-"], &ascstr, replacetomap)
+								{
+									let mut ascsiter = ascs.into_iter();
+									ascsiter.next();
+									let s: String = vec![nons, wordsuffix_asc, afterword_whites]
+										.into_iter()
+										.flatten()
+										.collect();
 
-						// reveal!(nonasc);
+									// println!("{s}++{mark}++");
 
-						// let ascrems = *reveal!(
-						// 	auto_quote_ascii(&ascrem, ascii_quote_len).as_str()
-						// );
+									let (_, st) = auto_quote(stripped, ascii_quote_len, replacetomap);
+									s + mark + st.as_str()
+								} else if let Some((mark, stripped)) =
+									find_strip_prefix([":"], &ascstr, replacetomap)
+								{
+									let comma_i = stripped
+										.chars()
+										.enumerate()
+										.find(|(_, c)| ",\n".chars().any(|e| e == *c))
+										.map(|(i, c)| i + 1) // charsを基準にfindしたので+1
+										.unwrap_or(stripped.len());
 
-						nonasc + leftwhites_string.as_str() + ascstr.as_str()
+									let (raw, rem) = stripped.split_at(comma_i);
+
+									// println!("++{mark}++{raw}++");
+
+									let rrem = if rem.len() > 0 { &rem[1..] } else { rem };
+									let (_, st) = auto_quote(rrem, ascii_quote_len, replacetomap);
+
+									[nons, wordsuffix_asc, afterword_whites]
+										.into_iter()
+										.flatten()
+										.collect::<String>() + mark
+										+ raw + st.as_str()
+								} else {
+									let (nonasc, mut ascrem): (String, String) = if nons.len() > 0 {
+										let nonasc_word: String = format!(
+											"\"{}\"",
+											[nons, wordsuffix_asc]
+												.into_iter()
+												.flatten()
+												.collect::<String>() // .fold(String::new(), |s, c| format!("{s}{c}"))
+										);
+
+										afterword_whites.extend(ascs.iter());
+										(nonasc_word, afterword_whites.into_iter().collect())
+									} else {
+										(String::new(), ascii.into_iter().collect())
+									};
+
+									// reveal!(nonasc);
+									// reveal!(ascrem);
+
+									// let ascrems = *reveal!(
+									// 	auto_quote_ascii(&ascrem, ascii_quote_len).as_str()
+									// );
+
+									nonasc + ascrem.as_str()
+								},
+							)
+						}
+					} else {
+						(
+							false,
+							if nons.len() > 0 {
+								let nonasc_word: String = format!(
+									"\"{}\"",
+									[nons, wordsuffix_asc]
+										.into_iter()
+										.flatten()
+										.collect::<String>() // .fold(String::new(), |s, c| format!("{s}{c}"))
+								);
+								nonasc_word
+							} else {
+								if wordsuffix_asc
+									.iter()
+									.next()
+									.map(|c| c.is_ascii_alphabetic())
+									.unwrap_or(false) && wordsuffix_asc.len() >= ascii_quote_len
+								{
+									format!(
+										"\"{}\"",
+										wordsuffix_asc.into_iter().collect::<String>() // .fold(String::new(), |s, c| format!("{s}{c}"))
+									)
+								} else {
+									raw
+								}
+							},
+						)
 					}
 				} else {
-					if nons.len() > 0 {
-						let nonasc_word: String = format!("\"{}\"", nonsstr);
-						nonasc_word + leftwhites_string.as_str()
-					} else {
-						raw
-					}
-				}
-			};
+					let (_, ascs) = ascii.split_at(leftwhites_asc.len());
+					let nonsstr = nons.iter().map(|c| *c).collect::<String>();
+					let leftwhites_string: String = leftwhites_asc.into_iter().collect();
 
-			s
+					if let Some(ascc) = ascs.into_iter().next() {
+						let ascstr = ascs.into_iter().collect::<String>();
+
+						// println!("ascstr=");
+						// println!("{ascstr}");
+
+						if ascstr.strip_prefix("::").is_some() {
+							(true, raw)
+						} else {
+							(
+								false,
+								if let Some((mark, stripped)) =
+									find_strip_prefix(["{", "[", "<-"], &ascstr, replacetomap)
+								{
+									let mut ascsiter = ascs.into_iter();
+									ascsiter.next();
+									let s: String = nons.into_iter().collect();
+
+									// println!("{s}++{mark}++");
+
+									let (_, st) = auto_quote(stripped, ascii_quote_len, replacetomap);
+
+									s + leftwhites_string.as_str() + mark + st.as_str()
+								} else if let Some((mark, stripped)) =
+									find_strip_prefix([":"], &ascstr, replacetomap)
+								{
+									let comma_i = stripped
+										.chars()
+										.enumerate()
+										.find(|(_, c)| ",\n".chars().any(|e| e == *c))
+										.map(|(i, c)| i + 1)
+										.unwrap_or(stripped.len());
+
+									let (raw, rem) = stripped.split_at(comma_i);
+
+									// println!("++{mark}++{raw}++");
+
+									let (_, st) = auto_quote(rem, ascii_quote_len, replacetomap);
+									nonsstr + leftwhites_string.as_str() + mark + raw + st.as_str()
+								} else {
+									let nonasc = if nons.len() > 0 {
+										let nonasc_word: String = format!("\"{}\"", nonsstr);
+
+										nonasc_word
+									} else {
+										String::new()
+									};
+
+									// reveal!(nonasc);
+
+									// let ascrems = *reveal!(
+									// 	auto_quote_ascii(&ascrem, ascii_quote_len).as_str()
+									// );
+
+									nonasc + leftwhites_string.as_str() + ascstr.as_str()
+								},
+							)
+						}
+					} else {
+						(
+							false,
+							if nons.len() > 0 && !is_system_ops {
+								let nonasc_word: String = format!("\"{}\"", nonsstr);
+								nonasc_word + leftwhites_string.as_str()
+							} else {
+								raw
+							},
+						)
+					}
+				};
+
+				if s.0 {
+					is_system_ops = true;
+				}
+
+				s
+			}
 		})
-		.collect()
+		.unzip();
+
+	// (bools.into_iter().next().unwrap_or(false), ss.concat())
+
+	println!("{:?}", &bools);
+
+	(bools.into_iter().any(|d| d), ss.concat())
 
 	// .fold(String::new(), |s, f| s + f.as_str())
 }
@@ -418,12 +490,12 @@ fn auto_quote_ascii<'a, 's>(asciis: &'s Vec<&'a char>, ascii_quote_len: usize) -
 fn quote_escape_test() {
 	let t = "
 	r1[] <- [[1, 'a'], [2, 'b']]
-	r2[] <- [[2, 'B'], [3, 'C']]
+	r2[] . [[2, 'B'], [3, 'C']]
 
-	?[l1, l2] := r1[a, l1],
+	?[l1, l2] :- r1[a, l1],
 					 r2[b, l2]";
 
-	let d = magic_format_cozo_script(t, 3, &default_replacetomap());
+	let d = magic_format_cozo_script(t, 3, &default_replacetomap(), &default_replaceallmap());
 
 	println!("{d}");
 }
@@ -443,9 +515,13 @@ fn auto_quote_test() {
 	];
 	";
 
-	let h = default_replacetomap();
-	let s = auto_quote(text, 3, &h);
+	let opt = "
+	::columns 挨拶
+	;";
 
-	println!("{}", &s);
+	let h = default_replacetomap();
+	let s = auto_quote(opt, 3, &h);
+
+	reveal!(s);
 	// assert_eq!(text, s.as_str());
 }

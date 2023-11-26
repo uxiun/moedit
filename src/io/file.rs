@@ -6,9 +6,10 @@ use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	fs::{File, OpenOptions},
 	io::{BufReader, BufWriter, Bytes, Write},
+	iter::zip,
 	path::{Path, PathBuf},
 	str::from_utf8,
-	time::Duration, iter::zip,
+	time::Duration,
 };
 
 use crate::{data::table::NamedRowsWrap, reveal};
@@ -76,16 +77,34 @@ fn watch_trigger_with_db<P: AsRef<Path>>(path: P, dbpath: P) -> notify::Result<(
 			Ok(event) => {
 				println!("watch[{count}] event[{}]", &event.len());
 				count += 1;
-				let tables = run_cozo_script_blocks(&db, event);
+				let scriptables = run_cozo_script_blocks(&db, event);
 
-				if zip(lastables.iter(), tables.iter()).any(|(a,b)| a != b) {
-					last_executed_count = count;
-					lastables = vec![];
-					tables.into_iter().for_each(|t| {
-						println!("{}", t.as_str());
-						lastables.push(t);
-					})
-				}
+				// if zip(lastables.iter(), tables.iter()).any(|(a, b)| a != b) {
+				// 	last_executed_count = count;
+				// 	lastables = vec![];
+
+				// 	tables.into_iter().for_each(|t| {
+				// 		println!("{}", t.as_str());
+				// 		lastables.push(t);
+				// 	})
+
+				// }
+
+				let (scripts, tables): (Vec<_>, Vec<_>) = scriptables.into_iter().unzip();
+
+				scripts.iter().for_each(|s| {
+					println!(">>> {s}");
+				});
+
+				tables.into_iter().enumerate().for_each(|(i, t)| {
+					let mut ls = scripts[i].lines();
+					println!(
+						"↓ {}{}",
+						ls.next().unwrap_or(""),
+						if ls.next().is_some() { " ..." } else { "" }
+					);
+					println!("{}", t);
+				})
 			}
 			Err(error) => println!("Error: {error:?}"),
 		}
@@ -104,9 +123,23 @@ pub fn default_replacetomap<'a>() -> ReplaceToMap<'a> {
 	)
 }
 
-fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<DebouncedEvent>)
--> Vec<String>
-{
+pub fn default_replaceallmap<'a>() -> ReplaceToMap<'a> {
+	HashMap::from_iter(
+		[
+			(":=", vec![":-"]),
+			("<-", vec![".=", "←"]),
+			(" <- ", vec![" . "]),
+			("?[", vec!["？["]),
+		]
+		.into_iter()
+		.map(|(k, v)| (k, v.into_iter().collect())),
+	)
+}
+
+fn run_cozo_script_blocks<'a>(
+	dbref: &'a Db<impl Storage<'a>>,
+	events: Vec<DebouncedEvent>,
+) -> Vec<(String, String)> {
 	let suffix = ";";
 	let ascii_quote_len = 3;
 	let exedb = true;
@@ -116,13 +149,19 @@ fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<Debou
 	let mut scannedfiles = vec![];
 	let mut scannedmap: ScannedFileMap = HashMap::new();
 
-	let namedrows: Vec<NamedRows> = filenames
+	let namedrows: Vec<(String, NamedRows)> = filenames
 		.into_iter()
 		.map(|path| {
 			reveal!(path);
 			readfile(&path)
 				.map(|b| {
-					let bs = active_inactive_blocks(suffix, b, ascii_quote_len, &replacetomap);
+					let bs = active_inactive_blocks(
+						suffix,
+						b,
+						ascii_quote_len,
+						&replacetomap,
+						&default_replaceallmap(),
+					);
 
 					if bs.0.len() > 0 {
 						scannedfiles.push(path.clone());
@@ -130,12 +169,13 @@ fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<Debou
 					}
 
 					bs.0.into_iter().filter_map(|block| {
-						println!(">>> {block}");
+						// println!(">>> {block}");
 
 						if exedb {
 							dbref
 								.run_script(&block, BTreeMap::new(), ScriptMutability::Mutable)
 								.ok()
+								.map(|x| (block, x))
 						} else {
 							None
 						}
@@ -147,8 +187,10 @@ fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<Debou
 		.flatten()
 		.collect();
 
-	namedrows.into_iter().map(|row| NamedRowsWrap(row).into()).collect()
-
+	namedrows
+		.into_iter()
+		.map(|(script, row)| (script, NamedRowsWrap(row).into()))
+		.collect()
 
 	// reveal!(scannedmap);
 
