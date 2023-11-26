@@ -8,12 +8,12 @@ use std::{
 	io::{BufReader, BufWriter, Bytes, Write},
 	path::{Path, PathBuf},
 	str::from_utf8,
-	time::Duration,
+	time::Duration, iter::zip,
 };
 
 use crate::{data::table::NamedRowsWrap, reveal};
 
-use super::parse::{active_inactive_blocks, blocks};
+use super::parse::{active_inactive_blocks, blocks, ReplaceToMap};
 
 pub fn main() {}
 
@@ -68,14 +68,23 @@ fn watch_trigger_with_db<P: AsRef<Path>>(path: P, dbpath: P) -> notify::Result<(
 		.watch(path.as_ref(), RecursiveMode::Recursive)?;
 
 	let mut count = 0;
+	let mut last_executed_count = 0;
+	let mut lastables: Vec<String> = vec![];
 
 	for res in rx {
 		match res {
 			Ok(event) => {
 				println!("watch[{count}] event[{}]", &event.len());
 				count += 1;
-				if count % 2 == 0 {
-					run_cozo_script_blocks(&db, event)
+				let tables = run_cozo_script_blocks(&db, event);
+
+				if zip(lastables.iter(), tables.iter()).any(|(a,b)| a != b) {
+					last_executed_count = count;
+					lastables = vec![];
+					tables.into_iter().for_each(|t| {
+						println!("{}", t.as_str());
+						lastables.push(t);
+					})
 				}
 			}
 			Err(error) => println!("Error: {error:?}"),
@@ -87,8 +96,22 @@ fn watch_trigger_with_db<P: AsRef<Path>>(path: P, dbpath: P) -> notify::Result<(
 
 type ScannedFileMap = HashMap<PathBuf, (Vec<String>, Vec<String>)>;
 
-fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<DebouncedEvent>) {
+pub fn default_replacetomap<'a>() -> ReplaceToMap<'a> {
+	HashMap::from_iter(
+		[("{", vec!["《"]), ("}", vec!["》"])]
+			.into_iter()
+			.map(|(k, v)| (k, v.into_iter().collect())),
+	)
+}
+
+fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<DebouncedEvent>)
+-> Vec<String>
+{
 	let suffix = ";";
+	let ascii_quote_len = 3;
+	let exedb = true;
+	let replacetomap = default_replacetomap();
+
 	let filenames = get_filenames(events);
 	let mut scannedfiles = vec![];
 	let mut scannedmap: ScannedFileMap = HashMap::new();
@@ -99,7 +122,7 @@ fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<Debou
 			reveal!(path);
 			readfile(&path)
 				.map(|b| {
-					let bs = active_inactive_blocks(suffix, b);
+					let bs = active_inactive_blocks(suffix, b, ascii_quote_len, &replacetomap);
 
 					if bs.0.len() > 0 {
 						scannedfiles.push(path.clone());
@@ -107,11 +130,15 @@ fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<Debou
 					}
 
 					bs.0.into_iter().filter_map(|block| {
-						println!("script: {block}");
+						println!(">>> {block}");
 
-						dbref
-							.run_script(&block, BTreeMap::new(), ScriptMutability::Mutable)
-							.ok()
+						if exedb {
+							dbref
+								.run_script(&block, BTreeMap::new(), ScriptMutability::Mutable)
+								.ok()
+						} else {
+							None
+						}
 					})
 				})
 				.into_iter()
@@ -120,10 +147,8 @@ fn run_cozo_script_blocks<'a>(dbref: &'a Db<impl Storage<'a>>, events: Vec<Debou
 		.flatten()
 		.collect();
 
-	for row in namedrows {
-		let s: String = NamedRowsWrap(row).into();
-		println!("{s}");
-	}
+	namedrows.into_iter().map(|row| NamedRowsWrap(row).into()).collect()
+
 
 	// reveal!(scannedmap);
 
