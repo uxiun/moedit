@@ -9,7 +9,7 @@ use std::{
 	iter::zip,
 	path::{Path, PathBuf},
 	str::from_utf8,
-	time::Duration,
+	time::{Duration, SystemTime},
 };
 
 use crate::{data::table::NamedRowsWrap, reveal};
@@ -62,7 +62,7 @@ fn watch_trigger_with_db<P: AsRef<Path>>(path: P, dbpath: P) -> notify::Result<(
 
 	let (tx, rx) = std::sync::mpsc::channel();
 
-	let mut debouncer = new_debouncer(Duration::from_secs(1), tx)?;
+	let mut debouncer = new_debouncer(Duration::from_millis(300), tx)?;
 
 	debouncer
 		.watcher()
@@ -72,41 +72,54 @@ fn watch_trigger_with_db<P: AsRef<Path>>(path: P, dbpath: P) -> notify::Result<(
 	let mut last_executed_count = 0;
 	let mut lastables: Vec<String> = vec![];
 
+	let mut now: Option<SystemTime> = None;
+
 	for res in rx {
-		match res {
-			Ok(event) => {
-				println!("watch[{count}] event[{}]", &event.len());
-				count += 1;
-				let scriptables = run_cozo_script_blocks(&db, event);
+		if now
+			.map(|t| t.elapsed().ok())
+			.flatten()
+			.map(|dur| dur.as_millis())
+			.unwrap_or(101)
+			> 100
+		{
+			now = Some(SystemTime::now());
 
-				// if zip(lastables.iter(), tables.iter()).any(|(a, b)| a != b) {
-				// 	last_executed_count = count;
-				// 	lastables = vec![];
+			match res {
+				Ok(event) => {
+					println!("watch[{count}]");
+					count += 1;
 
-				// 	tables.into_iter().for_each(|t| {
-				// 		println!("{}", t.as_str());
-				// 		lastables.push(t);
-				// 	})
+					let scriptables = run_cozo_script_blocks(&db, event);
 
-				// }
+					// if zip(lastables.iter(), tables.iter()).any(|(a, b)| a != b) {
+					// 	last_executed_count = count;
+					// 	lastables = vec![];
 
-				let (scripts, tables): (Vec<_>, Vec<_>) = scriptables.into_iter().unzip();
+					// 	tables.into_iter().for_each(|t| {
+					// 		println!("{}", t.as_str());
+					// 		lastables.push(t);
+					// 	})
 
-				scripts.iter().for_each(|s| {
-					println!(">>> {s}");
-				});
+					// }
 
-				tables.into_iter().enumerate().for_each(|(i, t)| {
-					let mut ls = scripts[i].lines();
-					println!(
-						"↓ {}{}",
-						ls.next().unwrap_or(""),
-						if ls.next().is_some() { " ..." } else { "" }
-					);
-					println!("{}", t);
-				})
+					let (scripts, tables): (Vec<_>, Vec<_>) = scriptables.into_iter().unzip();
+
+					scripts.iter().for_each(|s| {
+						println!(">>> {s}");
+					});
+
+					tables.into_iter().enumerate().for_each(|(i, t)| {
+						let mut ls = scripts[i].lines();
+						println!(
+							"↓ {}{}",
+							ls.next().unwrap_or(""),
+							if ls.next().is_some() { " ..." } else { "" }
+						);
+						println!("{}", t);
+					})
+				}
+				Err(error) => println!("Error: {error:?}"),
 			}
-			Err(error) => println!("Error: {error:?}"),
 		}
 	}
 
@@ -152,7 +165,7 @@ fn run_cozo_script_blocks<'a>(
 	let namedrows: Vec<(String, NamedRows)> = filenames
 		.into_iter()
 		.map(|path| {
-			reveal!(path);
+			// reveal!(path);
 			readfile(&path)
 				.map(|b| {
 					let bs = active_inactive_blocks(

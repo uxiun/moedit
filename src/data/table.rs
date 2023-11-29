@@ -3,6 +3,8 @@ use std::str::from_utf8;
 use cozo::{DataValue, NamedRows, Validity};
 use tabled::{builder::Builder, Tabled};
 
+use crate::reveal;
+
 #[derive(Debug, Tabled)]
 struct DatavalueWrap(DataValue);
 
@@ -78,12 +80,50 @@ impl Into<String> for NamedRowsWrap {
 		builder.set_header(self.0.headers);
 
 		self.0.rows.into_iter().for_each(|data| {
-			builder.push_record(data.into_iter().map(|d| d.to_string()));
+			builder.push_record(
+				data
+					.into_iter()
+					.map(|d| wrap_strings_width(41, d.to_string().as_str())),
+			);
 		});
 
 		let table = builder.build();
 		table.to_string()
 	}
+}
+
+pub fn wrap_strings_width<'a>(width: u16, s: &'a str) -> String {
+	let mut chunks = vec![];
+	let mut chunk = vec![];
+	let mut chunkwidth = 0;
+
+	for c in s.chars() {
+		let cw = if c.is_ascii() { 1 } else { 2 };
+		let w = chunkwidth + cw;
+
+		if w > width {
+			chunks.push(chunk);
+			chunk = vec![c];
+			chunkwidth = cw;
+		} else {
+			chunk.push(c);
+			chunkwidth = w;
+		}
+	}
+	chunks.push(chunk);
+
+	chunks
+		.into_iter()
+		.intersperse(vec!['\n'])
+		.flatten()
+		.collect()
+}
+
+#[test]
+fn wraptest() {
+	let wrapped = wrap_strings_width(9, "これでどうでしょうか");
+
+	println!("{wrapped}");
 }
 
 // pub fn pretty_datavalues(i: Vec<DataValue>, indent: u8)-> String

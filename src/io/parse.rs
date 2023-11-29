@@ -182,8 +182,7 @@ pub fn auto_quote<'a, 's, 'j>(
 	ascii_quote_len: usize,
 	replacetomap: &'j ReplaceToMap<'s>,
 ) -> (bool, String) {
-	// let strs =
-	println!("auto_quote({})", s);
+	// println!("auto_quote({})", s);
 
 	let pt = partition_toggle_tuple(s.chars(), &mut |c| c.is_ascii());
 
@@ -419,7 +418,7 @@ pub fn auto_quote<'a, 's, 'j>(
 
 	// (bools.into_iter().next().unwrap_or(false), ss.concat())
 
-	println!("{:?}", &bools);
+	// println!("{:?}", &bools);
 
 	(bools.into_iter().any(|d| d), ss.concat())
 

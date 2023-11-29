@@ -416,6 +416,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "cstree"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81b0cb07675f2025784ff3964c5b8fdcf0cc86c1288ae2d798549b7866b66d96"
+dependencies = [
+ "cstree_derive",
+ "fxhash",
+ "indexmap",
+ "parking_lot",
+ "sptr",
+ "text-size",
+ "triomphe",
+]
+
+[[package]]
+name = "cstree_derive"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0da6c38bede0ecec78757fe92451c463ac9e6d37961c2cbce6a20be917951baf"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.39",
+]
+
+[[package]]
 name = "csv"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -976,6 +1002,7 @@ name = "moedit"
 version = "0.1.0"
 dependencies = [
  "cozo",
+ "cstree",
  "nom",
  "notify",
  "notify-debouncer-mini",
@@ -1733,6 +1760,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
+name = "sptr"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
+
+[[package]]
 name = "sqlite"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1761,6 +1794,12 @@ dependencies = [
  "libc",
  "sqlite3-src",
 ]
+
+[[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "static_assertions"
@@ -1900,6 +1939,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "text-size"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f18aa187839b2bdb1ad2fa35ead8c4c2976b64e4363c386d45ac0f7ee85c9233"
+
+[[package]]
 name = "textwrap"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1944,6 +1989,15 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "triomphe"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0c5a71827ac326072b6405552093e2ad2accd25a32fd78d4edc82d98c7f2409"
+dependencies = [
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "twox-hash"

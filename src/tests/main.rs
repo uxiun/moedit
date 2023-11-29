@@ -3,6 +3,12 @@ use crate::{
 	util::func::{partition_toggle, partition_toggle_tuple},
 };
 
+mod parsetest {
+	fn var() {
+		let s = "hello2";
+	}
+}
+
 #[test]
 fn fswatch() {
 	crate::io::file::main();
