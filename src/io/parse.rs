@@ -36,6 +36,13 @@ pub fn blocks(b: BufReader<File>) -> Vec<Vec<String>> {
 	ls.into_iter().filter(|v| v.len() > 0).collect()
 }
 
+pub fn blocks_emptyline2(b: BufReader<File>) -> Vec<Vec<String>> {
+	blocks(b)
+		.split(|lines| lines.len() == 0)
+		.map(|lss| lss.into_iter().flatten().map(|s| s.clone()).collect())
+		.collect()
+}
+
 pub fn active_inactive_blocks<'a, 's, 'j>(
 	active_block_marker_suffix: &'a str,
 	b: BufReader<File>,
@@ -43,7 +50,7 @@ pub fn active_inactive_blocks<'a, 's, 'j>(
 	replacetomap: &'j ReplaceToMap<'s>,
 	replaceallmap: &'j ReplaceToMap<'s>,
 ) -> (Vec<String>, Vec<String>) {
-	let (actives, inactives): (Vec<_>, Vec<_>) = blocks(b).into_iter().partition(|ls| {
+	let (actives, inactives): (Vec<_>, Vec<_>) = blocks_emptyline2(b).into_iter().partition(|ls| {
 		ls.last()
 			.map(|s| active_block_marker_suffix.is_suffix_of(&s))
 			.unwrap_or(false)

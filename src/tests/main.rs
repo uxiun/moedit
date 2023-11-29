@@ -4,8 +4,29 @@ use crate::{
 };
 
 mod parsetest {
-	fn var() {
-		let s = "hello2";
+	use cstree::Syntax;
+	use display_tree::AsTree;
+
+	use crate::{
+		data::tree::GreenNodeTree,
+		reveal,
+		script::{parse::{parse_cozo, SyntaxCozo}, node::parse_cozo_and_print},
+	};
+
+
+	
+	#[test]
+	fn varmany() {
+		[
+			"あいう4hello",
+			"world_is",
+			"あ、の",
+			"44dd",
+		]
+			.into_iter()
+			.for_each(|input| {
+				let g = parse_cozo_and_print(SyntaxCozo::Var, input);
+			})
 	}
 }
 

@@ -139,10 +139,14 @@ pub fn default_replacetomap<'a>() -> ReplaceToMap<'a> {
 pub fn default_replaceallmap<'a>() -> ReplaceToMap<'a> {
 	HashMap::from_iter(
 		[
-			(":=", vec![":-"]),
+			(", ", vec!["、、"]),
 			("<-", vec![".=", "←"]),
-			(" <- ", vec![" . "]),
+			(" <- ", vec![" . ", "《"]),
 			("?[", vec!["？["]),
+			(":", vec!["："]),
+			(";", vec!["；"]),
+			(":= *", vec![":-"]),
+			(":=", vec![".-"]),
 		]
 		.into_iter()
 		.map(|(k, v)| (k, v.into_iter().collect())),

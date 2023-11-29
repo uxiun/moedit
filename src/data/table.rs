@@ -77,14 +77,18 @@ pub struct NamedRowsWrap(pub NamedRows);
 impl Into<String> for NamedRowsWrap {
 	fn into(self) -> String {
 		let mut builder = Builder::default();
-		builder.set_header(self.0.headers);
+		let mut header = vec!["".to_string()];
+		header.extend(self.0.headers);
+		builder.set_header(header);
 
-		self.0.rows.into_iter().for_each(|data| {
-			builder.push_record(
+		self.0.rows.into_iter().enumerate().for_each(|(i, data)| {
+			let mut row = vec![i.to_string()];
+			row.extend(
 				data
 					.into_iter()
 					.map(|d| wrap_strings_width(41, d.to_string().as_str())),
 			);
+			builder.push_record(row);
 		});
 
 		let table = builder.build();

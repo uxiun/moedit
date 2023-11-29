@@ -1,9 +1,10 @@
-use std::iter::zip;
-
-use super::parse::{Token, HoldStr, HoldUsize};
-
+use super::parse::{CSTreeParser, HoldStr, HoldUsize, Token};
 
 pub fn tokenizer<'i>(input: &'i str) -> Vec<Token<'i>> {
+	vec![]
+}
+
+pub fn tokenizerstring<'i>(input: &'i str) -> Vec<(TokenKind, String)> {
 	let cs: Vec<char> = input.chars().collect::<Vec<_>>();
 	let cks = cs
 		.into_iter()
@@ -12,18 +13,19 @@ pub fn tokenizer<'i>(input: &'i str) -> Vec<Token<'i>> {
 			(k, c)
 		})
 		.collect::<Vec<_>>();
-	
-	(&cks).group_by(|(sk,s) ,(dk,d)| {
-		sk == dk
-	})
-	.into_iter()
-	.filter_map(|cks| {
-		let (ks, cs): (Vec<_>, String) = cks.into_iter().map(|d| *d).unzip();
-		ks.first().map(move |k| kind_to_token(*k, cs))
-	})
-	.collect()
-	
+
+	(&cks)
+		.group_by(|(sk, s), (dk, d)| sk == dk)
+		.into_iter()
+		.filter_map(|cks| {
+			let (ks, cs): (Vec<_>, String) = cks.into_iter().map(|d| *d).unzip();
+			ks.first().map(move |k| (*k, cs))
+		})
+		.collect()
 }
+
+#[test]
+fn tokenizr() {}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenKind {
@@ -46,14 +48,14 @@ pub enum TokenKind {
 	Tilda,
 	LessThan,
 	QuestionMark,
-	
+
 	Tab,
 	AsciiSpace,
 	AsciiAlpha,
 	AsciiDigit,
 	Alpha,
 	Space,
-	
+
 	Else,
 }
 
@@ -63,7 +65,7 @@ impl TryFrom<char> for TokenKind {
 		match value {
 			' ' => Ok(Self::AsciiSpace),
 			'[' => Ok(Self::BracketL),
-			']'=> Ok(Self::BracketR),
+			']' => Ok(Self::BracketR),
 			'(' => Ok(Self::ParenL),
 			')' => Ok(Self::ParenR),
 			'{' => Ok(Self::BraceL),
@@ -82,29 +84,32 @@ impl TryFrom<char> for TokenKind {
 			'~' => Ok(Self::Tilda),
 			'<' => Ok(Self::LessThan),
 			'?' => Ok(Self::QuestionMark),
-			
-			c =>
+
+			c => {
 				if false {
 					Err("never".to_string())
+				} else if c.is_ascii_digit() {
+					Ok(Self::AsciiDigit)
+				} else if c.is_ascii_alphabetic() {
+					Ok(Self::AsciiAlpha)
+				} else if c.is_alphabetic() {
+					Ok(Self::Alpha)
+				} else if c.is_whitespace() {
+					Ok(Self::Space)
+				} else {
+					Ok(Self::Else)
 				}
-				else if c.is_ascii_digit() { Ok(Self::AsciiDigit) }
-				else if c.is_ascii_alphabetic() { Ok(Self::AsciiAlpha) }
-				else if c.is_alphabetic() { Ok(Self::Alpha) }
-				else if c.is_whitespace() { Ok(Self::Space)}
-				else { Ok(Self::Else) }
+			}
 		}
 	}
 }
 
-fn kind_to_token<'i>(
-	k: TokenKind,
-	s: String
-) -> Token<'i> {
+pub fn kind_to_token<'i>(k: TokenKind, s: &'i str) -> Token<'i> {
 	match k {
 		TokenKind::AsciiDigit => Token::HoldStr(HoldStr::Numeric(&s)),
 		TokenKind::AsciiAlpha => Token::HoldStr(HoldStr::AsciiAlpha(&s)),
 		TokenKind::Alpha => Token::HoldStr(HoldStr::NonAsciiNonWhite(&s)),
 		TokenKind::AsciiSpace => Token::HoldUsize(HoldUsize::Spaces(s.len())),
-		_ => Token::Else
+		_ => Token::Else,
 	}
 }
